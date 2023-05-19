@@ -20,3 +20,9 @@
                         com.sun.enterprise.naming.spi; \
                         com.sun.enterprise.naming.util; version=${project.osgi.version}
 
+Import-Package: \
+                        com.sun.enterprise.security.ee.auth.login, \
+                        *
+
+# dependent flashlight package resolved at runtime
+DynamicImport-Package: org.glassfish.flashlight.provider

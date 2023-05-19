@@ -16,16 +16,18 @@
 
 package com.sun.enterprise.naming.impl;
 
+import com.sun.enterprise.security.ee.auth.login.ProgrammaticLogin;
 import org.glassfish.api.naming.NamingClusterInfo;
+import org.glassfish.hk2.api.ServiceLocator;
 import org.glassfish.internal.api.Globals;
 import org.glassfish.internal.api.ORBLocator;
-import org.glassfish.hk2.api.ServiceLocator;
 import org.omg.CORBA.ORB;
 
 import javax.naming.Context;
 import javax.naming.NamingException;
 import javax.naming.spi.InitialContextFactory;
 import javax.naming.spi.NamingManager;
+import java.security.Principal;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.logging.Level;
@@ -177,6 +179,7 @@ public class SerialInitContextFactory implements InitialContextFactory {
             }
         }
 
+        loginIfNecessary(myEnv);
         return createInitialContext(myEnv);
     }
 
@@ -192,6 +195,41 @@ public class SerialInitContextFactory implements InitialContextFactory {
             return new WrappedSerialContext(env, serialContext);
         } else {
             return serialContext ;
+        }
+    }
+
+    private void loginIfNecessary(Hashtable env)
+            throws NamingException {
+        if (env != null) {
+            String auth = (String) env.get(Context.SECURITY_AUTHENTICATION);
+            Object principal = env.get(Context.SECURITY_PRINCIPAL);
+            Object credential = env.get(Context.SECURITY_CREDENTIALS);
+
+            if ((auth == null || !auth.equals("none")) && (principal != null)) {
+                login(principal, credential);
+            }
+        }
+    }
+
+    private void login(Object principal, Object credential)
+            throws NamingException {
+        String userName;
+        if (principal instanceof String) {
+            userName = (String) principal;
+        } else if (principal instanceof Principal) {
+            userName = ((Principal) principal).getName();
+        } else {
+            throw new javax.naming.ConfigurationException("Invalid principal property");
+        }
+
+        ProgrammaticLogin service = Globals.getStaticHabitat().getService(ProgrammaticLogin.class);
+
+        try {
+            service.login(userName, String.valueOf(credential).toCharArray(), null, true);
+        } catch (Exception e) {
+            NamingException loginFailed = new NamingException("login failed");
+            loginFailed.setRootCause(e);
+            throw loginFailed;
         }
     }
 }
