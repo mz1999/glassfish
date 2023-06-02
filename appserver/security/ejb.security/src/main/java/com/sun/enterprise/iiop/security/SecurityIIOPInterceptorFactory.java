@@ -16,13 +16,19 @@
 
 package com.sun.enterprise.iiop.security;
 
+import com.sun.enterprise.config.serverbeans.SecurityService;
+import com.sun.enterprise.security.AccessToken;
 import com.sun.logging.LogDomains;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.glassfish.api.admin.ProcessEnvironment;
+import org.glassfish.api.admin.ServerEnvironment;
 import org.glassfish.enterprise.iiop.api.IIOPInterceptorFactory;
 
+import org.glassfish.hk2.api.ServiceLocator;
 import org.jvnet.hk2.annotations.Service;
+
+import javax.annotation.PostConstruct;
 import javax.inject.Singleton;
 import org.omg.CORBA.ORB;
 import org.omg.IOP.Codec;
@@ -56,8 +62,23 @@ public class SecurityIIOPInterceptorFactory implements IIOPInterceptorFactory{
     @Inject
     private ProcessEnvironment penv;
 
+    @Inject
+    private ServiceLocator habitat;
+
+    private byte[] keyBytes;
+
     private AlternateSecurityInterceptorFactory altSecFactory;
-    
+
+    @PostConstruct
+    public void initialize() throws Exception {
+        String credentialPassword = String.valueOf(System.currentTimeMillis());
+        if (penv.getProcessType().isServer()) {
+            SecurityService securityService = habitat.getService(SecurityService.class,
+                    ServerEnvironment.DEFAULT_INSTANCE_NAME);
+            credentialPassword = securityService.getPropertyValue("CredentialPassword", credentialPassword);
+        }
+        keyBytes = AccessToken.generateKeyBytes(credentialPassword);
+    }
     // are we supposed to add the interceptor and then return or just return an instance ?.
     public ClientRequestInterceptor createClientRequestInterceptor(ORBInitInfo info, Codec codec) {
         if (!penv.getProcessType().isServer()) {
@@ -129,7 +150,7 @@ public class SecurityIIOPInterceptorFactory implements IIOPInterceptorFactory{
      private synchronized ServerRequestInterceptor getServerInterceptorInstance(Codec codec) {
         if (sreq == null) {
             sreq = new SecServerRequestInterceptor(
-                    "SecServerRequestInterceptor", codec);
+                    "SecServerRequestInterceptor", codec, keyBytes);
         }
         return sreq;
     }

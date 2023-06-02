@@ -222,7 +222,7 @@ public class SerialInitContextFactory implements InitialContextFactory {
             throw new javax.naming.ConfigurationException("Invalid principal property");
         }
 
-        ProgrammaticLogin service = Globals.getStaticHabitat().getService(ProgrammaticLogin.class);
+        ProgrammaticLogin service = services.getService(ProgrammaticLogin.class);
 
         try {
             service.login(userName, String.valueOf(credential).toCharArray(), null, true);

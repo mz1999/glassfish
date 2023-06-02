@@ -19,4 +19,5 @@
                         com.sun.enterprise.iiop.security; version=${project.osgi.version}
 Import-Package: \
                         com.sun.logging.enterprise.system.core.security, \
+                        com.sun.corba.ee.spi.legacy.connection, \
                         *

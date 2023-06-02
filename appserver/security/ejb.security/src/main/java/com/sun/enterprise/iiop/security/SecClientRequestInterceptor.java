@@ -27,6 +27,7 @@ import com.sun.corba.ee.org.omg.CSI.*;
 import com.sun.corba.ee.org.omg.CSIIOP.CompoundSecMech;
 import com.sun.enterprise.security.auth.login.common.PasswordCredential;
 import com.sun.enterprise.security.auth.login.common.X509CertificateCredential;
+import com.sun.enterprise.security.common.ClientSecurityContext;
 import com.sun.enterprise.util.LocalStringManagerImpl;
 import com.sun.logging.LogDomains;
 
@@ -83,6 +84,8 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
      *     sc.context_id = SecurityAttributeService.value;
      */
     protected static final int SECURITY_ATTRIBUTE_SERVICE_ID = 15;
+
+    private static final int SECURITY_ATTRIBUTE_TOKEN_ID = 42;
    
     public SecClientRequestInterceptor(String name, Codec codec) {
 	this.name   = name;
@@ -213,6 +216,17 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
      */
     public void send_request(ClientRequestInfo ri) throws ForwardRequest
     {
+        // send token back to server
+        ClientSecurityContext current = ClientSecurityContext.getCurrent();
+        if (current != null) {
+            byte[] token = current.getToken();
+            if (token != null) {
+                ServiceContext st = new ServiceContext();
+                st.context_id = SECURITY_ATTRIBUTE_TOKEN_ID;
+                st.context_data = token;
+                ri.add_request_service_context(st, false);
+            }
+        }
         /**
          * CSIV2 level 0 implementation only requires stateless clients.
          * Client context id is therefore always set to 0.
@@ -420,6 +434,7 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
     public void receive_reply(ClientRequestInfo ri)
     {
         ServiceContext sc = null;
+        ServiceContext token = null;
         int status = -1;
  
 	if(_logger.isLoggable(Level.FINE)){
@@ -431,11 +446,8 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
          * mesage.
          */
 	try {
+            token = ri.get_reply_service_context(SECURITY_ATTRIBUTE_TOKEN_ID);
             sc = ri.get_reply_service_context(SECURITY_ATTRIBUTE_SERVICE_ID);
-            if (sc == null) {
-                handle_null_service_context(ri);
-                return;
-            }
 	} catch(org.omg.CORBA.BAD_PARAM e) {
             handle_null_service_context(ri);
             return;
@@ -443,6 +455,17 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
             _logger.log(Level.SEVERE,"iiop.service_context_exception",ex);
 	    return;
 	}
+        // save token that receive from server
+        if (token != null) {
+            ClientSecurityContext current = ClientSecurityContext.getCurrent();
+            if (current != null) {
+                current.setToken(token.context_data);
+            }
+        }
+        if (sc == null) {
+            handle_null_service_context(ri);
+            return;
+        }
 
         Any a;
         try {

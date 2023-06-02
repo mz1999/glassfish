@@ -20,8 +20,11 @@ package com.sun.enterprise.iiop.security;
 import com.sun.corba.ee.spi.ior.IOR;
 import com.sun.corba.ee.spi.presentation.rmi.StubAdapter;
 import com.sun.enterprise.common.iiop.security.SecurityContext;
+import com.sun.enterprise.security.AccessToken;
 import com.sun.enterprise.security.CORBAObjectPermission;
 import com.sun.enterprise.security.auth.login.LoginContextDriver;
+import com.sun.enterprise.security.auth.login.common.PasswordCredential;
+import com.sun.enterprise.security.common.AppservAccessController;
 import com.sun.logging.LogDomains;
 import java.net.Socket;
 
@@ -208,6 +211,21 @@ public class SecurityContextUtil implements PostConstruct {
             }
             return STATUS_FAILED;
         }
+    }
+
+    public void setSecurityContext(AccessToken token) {
+        final Subject fs = new Subject();
+        final PasswordCredential pc =
+                new PasswordCredential(token.getUsername(), token.getPassword(), token.getRealmName());
+
+        AppservAccessController.doPrivileged(new PrivilegedAction(){
+            public java.lang.Object run(){
+                fs.getPrivateCredentials().add(pc);
+                return fs;
+            }
+        });
+        com.sun.enterprise.security.SecurityContext securityContext = new com.sun.enterprise.security.SecurityContext(token.getUsername(), fs, token.getRealmName());
+        com.sun.enterprise.security.SecurityContext.setCurrent(securityContext);
     }
 
 

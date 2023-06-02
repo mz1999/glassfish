@@ -32,6 +32,7 @@ public abstract class AbstractSecurityContext implements AppServSecurityContext,
     // the principal that this security context represents.
     protected Principal initiator = null;
     protected Subject subject = null;
+    protected byte[] token;
     
     /**
      * This method should  be implemented by the subclasses to
@@ -49,6 +50,14 @@ public abstract class AbstractSecurityContext implements AppServSecurityContext,
      * invocation.
      */
     abstract public Subject getSubject();
+
+    public byte[] getToken() {
+        return token;
+    }
+
+    public void setToken(byte[] token) {
+        this.token = token;
+    }
 }
 
 

@@ -26,6 +26,7 @@ package com.sun.enterprise.iiop.security;
  */
 
 import com.sun.enterprise.common.iiop.security.SecurityContext;
+import com.sun.enterprise.security.AccessToken;
 import org.omg.CORBA.*;
 import org.omg.PortableInterceptor.*;
 import org.omg.IOP.*;
@@ -53,6 +54,7 @@ import com.sun.enterprise.util.LocalStringManagerImpl;
 import com.sun.logging.LogDomains;
 import java.net.Socket;
 import java.util.Hashtable;
+import java.util.Optional;
 import java.util.logging.*;
 import org.glassfish.enterprise.iiop.api.GlassFishORBHelper;
 
@@ -79,6 +81,9 @@ public class SecServerRequestInterceptor
      *     sc.context_id = SecurityAttributeService.value;
      */
     protected static final int SECURITY_ATTRIBUTE_SERVICE_ID = 15;
+
+    private static final int SECURITY_ATTRIBUTE_TOKEN_ID = 42;
+
     // the major and minor codes for a invalid mechanism
     private static final int INVALID_MECHANISM_MAJOR = 2;
     private static final int INVALID_MECHANISM_MINOR = 1;
@@ -96,15 +101,18 @@ public class SecServerRequestInterceptor
     private SecurityContextUtil secContextUtil = null;
     private GlassFishORBHelper orbHelper;
     private SecurityMechanismSelector smSelector = null;
+
+    private byte[] keyBytes;
     //Not required
     //  SecurityService secsvc = null;       // Security Service
-    public SecServerRequestInterceptor(String name, Codec codec) {
+    public SecServerRequestInterceptor(String name, Codec codec, byte[] keyBytes) {
         this.name    = name;
         this.codec   = codec;
         this.prname  = name + "::";
         secContextUtil = Lookups.getSecurityContextUtil();
         orbHelper = Lookups.getGlassFishORBHelper();
         smSelector = Lookups.getSecurityMechanismSelector();
+        this.keyBytes = keyBytes;
     }
 
     public String name() {
@@ -403,6 +411,7 @@ public class SecServerRequestInterceptor
     {
         SecurityContext seccontext = null;   // SecurityContext to be sent
         ServiceContext  sc = null;           // service context
+        ServiceContext  ts = null;
         int status = 0;
         boolean  raise_no_perm = false;
 
@@ -419,9 +428,20 @@ public class SecServerRequestInterceptor
                 handle_null_service_context(ri, orb);
                 return;
             }
+            ts = ri.get_request_service_context(SECURITY_ATTRIBUTE_TOKEN_ID);
         } catch (org.omg.CORBA.BAD_PARAM e) {
             handle_null_service_context(ri, orb);
             return;
+        }
+
+        // verify token
+        if (ts != null) {
+            Optional<AccessToken> tokenOptional = AccessToken.decode(keyBytes, ts.context_data);
+            if (tokenOptional.isPresent()) {
+                AccessToken accessToken = tokenOptional.get();
+                secContextUtil.setSecurityContext(accessToken);
+                return;
+            }
         }
 
         if(_logger.isLoggable(Level.FINE)){
@@ -622,6 +642,10 @@ public class SecServerRequestInterceptor
 
     public void send_reply(ServerRequestInfo ri)
     {
+        AccessToken.getAccessToken(keyBytes).ifPresent(token -> {
+            ServiceContext ctx = new ServiceContext(SECURITY_ATTRIBUTE_TOKEN_ID, token);
+            ri.add_reply_service_context(ctx, true);
+        });
         unsetSecurityContext();
     }
  
