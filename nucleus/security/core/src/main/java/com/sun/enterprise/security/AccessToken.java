@@ -55,10 +55,15 @@ public class AccessToken implements Serializable {
     }
 
     public static Optional<byte[]> getAccessToken(byte[] keyBytes) {
+        if (keyBytes == null) {
+            return Optional.empty();
+        }
+
         SecurityContext securityContext = SecurityContext.getCurrent();
         if (securityContext == null) {
             return Optional.empty();
         }
+
         Subject subject = securityContext.getSubject();
         if (subject == null) {
             return Optional.empty();

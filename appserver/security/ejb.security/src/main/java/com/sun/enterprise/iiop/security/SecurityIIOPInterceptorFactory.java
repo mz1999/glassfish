@@ -142,7 +142,7 @@ public class SecurityIIOPInterceptorFactory implements IIOPInterceptorFactory{
     private synchronized ClientRequestInterceptor getClientInterceptorInstance(Codec codec) {
         if (creq == null) {
             creq = new SecClientRequestInterceptor(
-                "SecClientRequestInterceptor", codec);
+                "SecClientRequestInterceptor", codec, keyBytes);
         }
         return creq;
     }

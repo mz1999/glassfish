@@ -25,6 +25,7 @@ import com.sun.enterprise.common.iiop.security.SecurityContext;
 
 import com.sun.corba.ee.org.omg.CSI.*;
 import com.sun.corba.ee.org.omg.CSIIOP.CompoundSecMech;
+import com.sun.enterprise.security.AccessToken;
 import com.sun.enterprise.security.auth.login.common.PasswordCredential;
 import com.sun.enterprise.security.auth.login.common.X509CertificateCredential;
 import com.sun.enterprise.security.common.ClientSecurityContext;
@@ -38,6 +39,7 @@ import java.security.PrivilegedAction;
 import java.security.cert.X509Certificate;
 
 import org.glassfish.enterprise.iiop.api.GlassFishORBHelper;
+import org.glassfish.internal.api.ServerContext;
 import org.omg.CORBA.*;
 import org.omg.PortableInterceptor.*;
 import org.omg.IOP.*;
@@ -78,6 +80,8 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
     private GlassFishORBHelper orbHelper;
     private SecurityContextUtil secContextUtil;
 
+    private byte[] keyBytes;
+
     /** 
      *  Hard code the value of 15 for SecurityAttributeService until
      *  it is defined in IOP.idl.
@@ -86,13 +90,18 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
     protected static final int SECURITY_ATTRIBUTE_SERVICE_ID = 15;
 
     private static final int SECURITY_ATTRIBUTE_TOKEN_ID = 42;
-   
+
     public SecClientRequestInterceptor(String name, Codec codec) {
+        this(name, codec, null);
+    }
+
+    public SecClientRequestInterceptor(String name, Codec codec, byte[] keyBytes) {
 	this.name   = name;
         this.codec  = codec;
         this.prname = name + "::";
         orbHelper = Lookups.getGlassFishORBHelper();
         secContextUtil = Lookups.getSecurityContextUtil();
+        this.keyBytes = keyBytes;
     }
 
     public String name() {
@@ -216,16 +225,11 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
      */
     public void send_request(ClientRequestInfo ri) throws ForwardRequest
     {
-        // send token back to server
         ClientSecurityContext current = ClientSecurityContext.getCurrent();
-        if (current != null) {
-            byte[] token = current.getToken();
-            if (token != null) {
-                ServiceContext st = new ServiceContext();
-                st.context_id = SECURITY_ATTRIBUTE_TOKEN_ID;
-                st.context_data = token;
-                ri.add_request_service_context(st, false);
-            }
+        if (current != null) { // send token back to server
+            addTokenToRequest(ri, current.getToken());
+        } else { // in server side
+            AccessToken.getAccessToken(keyBytes).ifPresent(token -> addTokenToRequest(ri, token));
         }
         /**
          * CSIV2 level 0 implementation only requires stateless clients.
@@ -359,6 +363,16 @@ public class SecClientRequestInterceptor extends    org.omg.CORBA.LocalObject
         if(_logger.isLoggable(Level.FINE)){
             _logger.log(Level.FINE,"Added EstablishContext message to service context list");
         }
+    }
+
+    private void addTokenToRequest(ClientRequestInfo ri, byte[] token) {
+        if (token == null) {
+            return;
+        }
+        ServiceContext st = new ServiceContext();
+        st.context_id = SECURITY_ATTRIBUTE_TOKEN_ID;
+        st.context_data = token;
+        ri.add_request_service_context(st, false);
     }
 
     public void send_poll(ClientRequestInfo ri) {
