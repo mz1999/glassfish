@@ -91,6 +91,7 @@ import org.glassfish.grizzly.strategies.WorkerThreadIOStrategy;
 import org.glassfish.grizzly.threadpool.DefaultWorkerThread;
 import org.glassfish.grizzly.threadpool.GrizzlyExecutorService;
 import org.glassfish.grizzly.threadpool.ThreadPoolConfig;
+import org.glassfish.grizzly.threadpool.VirtualThreadExecutorService;
 import org.glassfish.grizzly.utils.DelayedExecutor;
 import org.glassfish.grizzly.utils.IdleTimeoutFilter;
 import org.glassfish.hk2.api.ServiceLocator;
@@ -561,44 +562,30 @@ public class GenericGrizzlyListener implements GrizzlyListener {
     }
 
     protected void configureThreadPool(final ServiceLocator habitat,
-            final NetworkListener networkListener,
-            final ThreadPool threadPool) {
+                                       final NetworkListener networkListener,
+                                       final ThreadPool threadPool) {
 
         final String classname = threadPool.getClassname();
-        if (classname != null &&
-                !ThreadPool.DEFAULT_THREAD_POOL_CLASS_NAME.equals(classname)) {
 
-            // Use custom thread pool
-            try {
-                final ExecutorService customThreadPool =
-                        Utils.newInstance(habitat,
-                        ExecutorService.class, classname, classname);
-
-                if (customThreadPool != null) {
-                    if (!configureElement(habitat, networkListener,
-                            threadPool, customThreadPool)) {
-                        LOGGER.log(Level.INFO,
-                                "The ThreadPool configuration bean can not be "
-                                + "passed to the custom thread-pool: {0}" +
-                                " instance, because it's not {1}.",
-                                new Object[] {
-                                classname, ConfigAwareElement.class.getName()});
-                    }
-
-                    workerExecutorService = customThreadPool;
-                    transport.setWorkerThreadPool(customThreadPool);
-                    return;
-                }
-
-                LOGGER.log(Level.WARNING,
-                        "Can not initalize custom thread pool: {0}", classname);
-
-            } catch (Throwable t) {
-                LOGGER.log(Level.WARNING,
-                        "Can not initalize custom thread pool: " + classname, t);
+        if (classname == null) {
+            configureDefaultThreadPool(habitat, networkListener, threadPool);
+        } else {
+            switch (classname) {
+                case ThreadPool.DEFAULT_THREAD_POOL_CLASS_NAME:
+                        configureDefaultThreadPool(habitat, networkListener, threadPool);
+                        break;
+                case ThreadPool.VIRTUAL_THREAD_POOL_CLASS_NAME:
+                        configureVirtualThreadPool(habitat, networkListener, threadPool);
+                        break;
+                default:
+                    configureCustomThreadPool(classname, habitat, networkListener, threadPool);
             }
         }
+    }
 
+    private void configureDefaultThreadPool(final ServiceLocator habitat,
+                                            final NetworkListener networkListener,
+                                            final ThreadPool threadPool) {
         try {
             // Use standard Grizzly thread pool
             workerExecutorService = GrizzlyExecutorService.createInstance(
@@ -607,6 +594,50 @@ public class GenericGrizzlyListener implements GrizzlyListener {
         } catch (NumberFormatException ex) {
             LOGGER.log(Level.WARNING, "Invalid thread-pool attribute", ex);
         }
+    }
+
+    private void configureVirtualThreadPool(final ServiceLocator habitat,
+                                            final NetworkListener networkListener,
+                                            final ThreadPool threadPool) {
+        workerExecutorService = VirtualThreadExecutorService.createInstance(
+                configureThreadPoolConfig(networkListener, threadPool));
+        transport.setWorkerThreadPool(workerExecutorService);
+    }
+
+    private void configureCustomThreadPool(final String classname,
+                                           final ServiceLocator habitat,
+                                           final NetworkListener networkListener,
+                                           final ThreadPool threadPool) {
+        // Use custom thread pool
+        try {
+            final ExecutorService customThreadPool =
+                    Utils.newInstance(habitat,
+                            ExecutorService.class, classname, classname);
+
+            if (customThreadPool != null) {
+                if (!configureElement(habitat, networkListener,
+                        threadPool, customThreadPool)) {
+                    LOGGER.log(Level.INFO,
+                            "The ThreadPool configuration bean can not be "
+                                    + "passed to the custom thread-pool: {0}" +
+                                    " instance, because it's not {1}.",
+                            new Object[]{
+                                    classname, ConfigAwareElement.class.getName()});
+                }
+
+                workerExecutorService = customThreadPool;
+                transport.setWorkerThreadPool(customThreadPool);
+                return;
+            }
+
+            LOGGER.log(Level.WARNING,
+                    "Can not initalize custom thread pool: {0}", classname);
+
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING,
+                    "Can not initalize custom thread pool: " + classname, t);
+        }
+        configureDefaultThreadPool(habitat, networkListener, threadPool);
     }
 
     protected ThreadPoolConfig configureThreadPoolConfig(final NetworkListener networkListener,
